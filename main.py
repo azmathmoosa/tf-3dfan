@@ -6,7 +6,7 @@
 import numpy as np 
 import tensorflow as tf 
 import cv2 
-import fan
+from fan import FAN
 import data_gen
 
 IMG_WIDTH = 256
@@ -52,7 +52,7 @@ def _train_input_fn():
     return input_fn(
         purpose='train',        
         batch_size=10, 
-        num_epochs=3000, 
+        num_epochs=10, 
         shuffle=True)
 
 def _eval_input_fn():
@@ -61,7 +61,7 @@ def _eval_input_fn():
         purpose='eval',
         batch_size=2,
         num_epochs=1,
-        shuffle=False)
+        shuffle=True)
 
 def _predict_input_fn():
     """Function for predicting."""
@@ -69,7 +69,7 @@ def _predict_input_fn():
         purpose='eval',
         batch_size=2,
         num_epochs=1,
-        shuffle=False)
+        shuffle=True)
 
 def _serving_input_receiver_fn():
     """An input receiver that expects an image input"""
@@ -78,9 +78,15 @@ def _serving_input_receiver_fn():
         shape=[IMG_HEIGHT, IMG_WIDTH, IMG_CHANNEL],
         name="image_tensor"
     )
-    receiver_tensor = {'image': image}
+    img_path = tf.placeholder(
+        dtype=tf.string,
+        shape=tf.TensorShape([]),
+        name="img_path"
+    )
+    receiver_tensor = {'image': image, 'name': img_path}
     feature = {
-        'x': tf.reshape(image, [-1, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNEL])
+        'x': tf.reshape(image, [-1, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNEL]),
+        'name': img_path
         }
     return tf.estimator.export.ServingInputReceiver(feature, receiver_tensor)
 
@@ -144,7 +150,8 @@ def cnn_model_fn(features, labels, mode):
             "MSE": tf.metrics.root_mean_squared_error(
                 labels=labels_tensor,
                 predictions=heatmaps 
-            )
+            ),
+            "CrossEntropy": loss
         }
         return tf.estimator.EstimatorSpec(
             mode=mode,
@@ -155,14 +162,32 @@ def cnn_model_fn(features, labels, mode):
 def main(unused_argv):
     """MAIN"""
     est_config = tf.estimator.RunConfig(
-        save_checkpoints_steps = 1000,  # Save checkpoints every 100 steps.
+        save_checkpoints_steps = 5000,  # Save checkpoints every 100 steps.
         keep_checkpoint_max = 10,       # Retain the 10 most recent checkpoints.
-        save_summary_steps=100,        
+        save_summary_steps=500,        
+    )
+
+    exporter = tf.estimator.BestExporter(
+        serving_input_receiver_fn=_serving_input_receiver_fn,
+        exports_to_keep=5
+    )
+
+    train_spec = tf.estimator.TrainSpec(
+        input_fn=_train_input_fn,
+        max_steps=1000000
+    )
+
+
+    eval_spec = tf.estimator.EvalSpec(
+        input_fn=_eval_input_fn,
+        steps=100,
+        throttle_secs=15*60,
+        exporters=exporter
     )
 
     estimator = tf.estimator.Estimator(
         model_fn=cnn_model_fn,
-        model_dir="./train-fan-ce",
+        model_dir="./train-tf-fan",
         config=est_config
     )
 
@@ -176,14 +201,19 @@ def main(unused_argv):
     mode = mode_dict['train']
 
     if mode == mode_dict['train']:
-        estimator.train(
-            input_fn=_train_input_fn,
-            steps=200000
+        tf.estimator.train_and_evaluate(
+            estimator,
+            train_spec,
+            eval_spec
         )
-        estimator.export_saved_model(
-            export_dir_base="./exported",
-            serving_input_receiver_fn=_serving_input_receiver_fn
-        )
+        # estimator.train(
+        #     input_fn=_train_input_fn,
+        #     steps=2000000
+        # )
+        # estimator.export_saved_model(
+        #     export_dir_base="./exported",
+        #     serving_input_receiver_fn=_serving_input_receiver_fn
+        # )
 
     if mode == mode_dict['eval']:
         evaluation = estimator.evaluate(input_fn=_eval_input_fn)
