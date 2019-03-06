@@ -151,7 +151,9 @@ def cnn_model_fn(features, labels, mode):
                 labels=labels_tensor,
                 predictions=heatmaps 
             ),
-            "CrossEntropy": loss
+            "CrossEntropy": tf.metrics.mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(logits=heatmaps, labels=labels_tensor)
+            )
         }
         return tf.estimator.EstimatorSpec(
             mode=mode,
@@ -164,7 +166,7 @@ def main(unused_argv):
     est_config = tf.estimator.RunConfig(
         save_checkpoints_steps = 5000,  # Save checkpoints every 100 steps.
         keep_checkpoint_max = 10,       # Retain the 10 most recent checkpoints.
-        save_summary_steps=500,        
+        save_summary_steps=100,        
     )
 
     exporter = tf.estimator.BestExporter(

@@ -10,15 +10,15 @@ from imgaug import augmenters as iaa
 
 IMG_DIM = 256
 TRAIN_PATHS = [
-    "../LS3D-W/300VW-3D/Trainset/**/",
-    "../LS3D-W/300VW-3D/CatA/**/",
-    "../LS3D-W/300VW-3D/CatB/**/",
-    "../LS3D-W/300VW-3D/CatC/**/",
-    "../LS3D-W/AFLW2000-3D-Reannotated",
-    "../LS3D-W/Menpo-3D"
+    "/home/az/Documents/LS3D-W/300VW-3D/Trainset/**/",
+    "/home/az/Documents/LS3D-W/300VW-3D/CatA/**/",
+    "/home/az/Documents/LS3D-W/300VW-3D/CatB/**/",
+    "/home/az/Documents/LS3D-W/300VW-3D/CatC/**/",
+    "/home/az/Documents/LS3D-W/AFLW2000-3D-Reannotated",
+    "./home/az/Documents/LS3D-W/Menpo-3D"
 ]
 EVAL_PATHS = [
-    "../LS3D-W/300W-Testset-3D"
+    "/home/az/Documents/LS3D-W/300W-Testset-3D"
 ]
 
 sometimes = lambda aug: iaa.Sometimes(0.5, aug)
