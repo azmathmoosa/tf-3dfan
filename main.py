@@ -52,7 +52,7 @@ def _train_input_fn():
     return input_fn(
         purpose='train',        
         batch_size=10, 
-        num_epochs=10, 
+        num_epochs=30, 
         shuffle=True)
 
 def _eval_input_fn():
@@ -102,6 +102,7 @@ def cnn_model_fn(features, labels, mode):
     }
 
     if mode == tf.estimator.ModeKeys.PREDICT:
+        
 
         predictions_dict = {
             "name": features['name'],
@@ -121,7 +122,11 @@ def cnn_model_fn(features, labels, mode):
     tf.summary.image("outputs", outtensor[:,-1])
     tf.summary.image("gtmap", gttensor[:,-1])
 
-    loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=heatmaps, labels=labels_tensor), name= 'cross_entropy_loss')
+    # loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=heatmaps, labels=labels_tensor), name= 'cross_entropy_loss')
+    loss = tf.losses.mean_squared_error(
+        predictions=heatmaps, labels=labels_tensor
+    )
+    # loss = (tf.nn.l2_loss(heatmaps - labels_tensor))/2
 
     # loss = tf.losses.mean_squared_error(
     #     labels=labels_tensor,
@@ -129,10 +134,12 @@ def cnn_model_fn(features, labels, mode):
     #     weights=1.
     # )
 
+    tf.summary.scalar("htval", heatmaps[0,0,0,0,0])
+    tf.summary.scalar("gtval", labels_tensor[0,0,0,0,0])
     tf.summary.scalar("loss", loss)
         
     if mode == tf.estimator.ModeKeys.TRAIN:
-        optimizer = tf.train.AdamOptimizer(
+        optimizer = tf.train.RMSPropOptimizer(
             learning_rate=0.0001
         )
         train_op = optimizer.minimize(
@@ -147,7 +154,7 @@ def cnn_model_fn(features, labels, mode):
 
     if mode == tf.estimator.ModeKeys.EVAL:
         eval_metric_ops = {
-            "MSE": tf.metrics.root_mean_squared_error(
+            "MSE": tf.metrics.mean_squared_error(
                 labels=labels_tensor,
                 predictions=heatmaps 
             ),
@@ -189,7 +196,7 @@ def main(unused_argv):
 
     estimator = tf.estimator.Estimator(
         model_fn=cnn_model_fn,
-        model_dir="./train-tf-fan",
+        model_dir="./train-tf-fan-mse-4",
         config=est_config
     )
 
@@ -222,20 +229,27 @@ def main(unused_argv):
         tf.print(evaluation)
 
     else:
-        predictions = estimator.predict(input_fn=_predict_input_fn)
+        predictions = estimator.predict(input_fn=_eval_input_fn)
         for _, result in enumerate(predictions):
             filename  = result['name'].decode('ASCII')
             print(filename)
             img = result['image'] #cv2.imread(filename)
             heatmaps = result['heatmap']
 
-            print(heatmaps)
             for i, heatmap in enumerate(heatmaps):
                 heatmap  = np.sum(heatmap, axis=2)
-                print(np.unravel_index(np.argmax(heatmap), np.array(heatmap).shape))
-                heatmap = (heatmap * 255).astype(np.uint8)
+                # heatmap = (heatmap / -255).astype(np.uint8)
+                heatmap = (heatmap - heatmap.min())/(heatmap.max()-heatmap.min())
+                heatmap = cv2.resize(heatmap, (256, 256))
+                cv2.imshow("%d"%i, heatmap)
 
-                cv2.imshow("map%d"%i, heatmap)
+            pts = get_landmarks(heatmaps[1])
+            print(pts)
+            # print(heatmap)
+            for pt in pts:
+                cv2.circle(img, (int(pt[0]), int(pt[1])), 1, (0, 255, 0), -1, cv2.LINE_AA)
+
+                # cv2.imshow("map%d"%i, heatmap)
 
             # marks = np.squeeze(np.reshape(result['logits'], (2,68))) 
             # sz = IMG_WIDTH*2
@@ -249,6 +263,20 @@ def main(unused_argv):
             #         mark[1])), 1, (0, 255, 0), -1, cv2.LINE_AA)                        
             cv2.imshow('result', img)
             cv2.waitKey(0)
+
+def get_landmarks(heatmaps):
+    pts = []
+    for i,heatmap in enumerate(heatmaps):     
+        if i < 20:
+            cv2.imshow("%d"%i, heatmap)
+        
+        heatmap = cv2.resize(heatmap, (IMG_DIM, IMG_DIM))   
+
+        pt = np.unravel_index(heatmap.argmax(), heatmap.shape)
+        pt = pt[0], pt[1]
+        pts.append(pt)
+    
+    return pts
 
 if __name__ == "__main__":
     tf.app.run(main=main)
