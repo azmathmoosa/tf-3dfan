@@ -10,6 +10,7 @@ from imgaug import augmenters as iaa
 
 IMG_DIM = 256
 HM_DIM = 64
+HG_STACK = 1
 
 TRAIN_PATHS = [
     "/home/az/Documents/LS3D-W/300VW-3D/Trainset/**/",
@@ -43,13 +44,13 @@ seq = iaa.Sequential([
 ])
 
 
-def generator(purpose='train'):
+def generator(purpose='train', augment=True):
     img_paths, label_paths = get_img_label_paths(purpose)
 
     for i,l in zip(img_paths, label_paths):        
         if os.path.exists(i) and os.path.exists(l):
             try:
-                yield process_face(i, l)
+                yield process_face(i, l, augment)
             except Exception as e:
                 print(e, i, l)
         
@@ -78,7 +79,7 @@ def get_img_label_paths(purpose='train'):
 
 
 
-def process_face(image_path, label_path):
+def process_face(image_path, label_path, augment=True):
     img = cv2.imread(image_path)
     parts_xy = load_parts_xy(label_path)
 
@@ -109,13 +110,14 @@ def process_face(image_path, label_path):
     
     gtmap = generate_gtmap(parts_xy, sigma=1., outres=HM_DIM)
 
-    seq_det = seq.to_deterministic() # call this for each batch again, NOT only once at the start
-    face = seq_det.augment_image(face)
-    gtmap = seq_det.augment_heatmaps(ia.HeatmapsOnImage(gtmap, shape=face.shape)).get_arr()
+    if augment:
+        seq_det = seq.to_deterministic() # call this for each batch again, NOT only once at the start
+        face = seq_det.augment_image(face)
+        gtmap = seq_det.augment_heatmaps(ia.HeatmapsOnImage(gtmap, shape=face.shape)).get_arr()
 
     face = face/255.
 
-    gtmaps = [gtmap for i in range(2)]
+    gtmaps = [gtmap.copy() for i in range(HG_STACK)]
 
     return face, gtmaps, image_path
 
@@ -192,7 +194,8 @@ def generate_gtmap(joints, sigma, outres):
 
 
 if __name__ == "__main__":
-    for x,y,path in generator('train'):
+    for x,y,path in generator('train', augment=False):
         cv2.imshow("face", x[:,:,::-1])
-        cv2.imshow("heatmaps", np.sum(y[0], axis=2))
+        for i,h in enumerate(y):
+            cv2.imshow("heatmap_%d"%i, np.sum(y[0], axis=2))
         cv2.waitKey(100)
