@@ -14,6 +14,7 @@ IMG_HEIGHT = 256
 IMG_CHANNEL = 3
 IMG_DIM = IMG_WIDTH
 data_gen.IMG_DIM = IMG_DIM
+HG_STACK = 1
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -24,7 +25,7 @@ def input_fn(purpose='train', batch_size=1, num_epochs=None, shuffle=True):
     """
     Input function for tf estimator
     """
-    dataset = tf.data.Dataset.from_generator(lambda: data_gen.generator(purpose),
+    dataset = tf.data.Dataset.from_generator(lambda: data_gen.generator(purpose, augment=True),
                                 output_types=(tf.float32, tf.float32, tf.string),
                                 output_shapes=((IMG_DIM, IMG_DIM, 3), (2, 64, 64, 68), tf.TensorShape([])))
 
@@ -52,7 +53,7 @@ def _train_input_fn():
     return input_fn(
         purpose='train',        
         batch_size=10, 
-        num_epochs=30, 
+        num_epochs=50, 
         shuffle=True)
 
 def _eval_input_fn():
@@ -94,7 +95,7 @@ def cnn_model_fn(features, labels, mode):
 
     inputs = tf.to_float(features['x'], name="input_to_float")
 
-    heatmaps = FAN(2)(inputs)
+    heatmaps = FAN(HG_STACK)(inputs)
 
     # # Make prediction for PREDICTION mode.
     predictions_dict = {
@@ -140,7 +141,7 @@ def cnn_model_fn(features, labels, mode):
         
     if mode == tf.estimator.ModeKeys.TRAIN:
         optimizer = tf.train.RMSPropOptimizer(
-            learning_rate=0.0001
+            learning_rate=0.001
         )
         train_op = optimizer.minimize(
             loss=loss,
@@ -196,7 +197,7 @@ def main(unused_argv):
 
     estimator = tf.estimator.Estimator(
         model_fn=cnn_model_fn,
-        model_dir="./train-tf-fan-mse-4",
+        model_dir="./train-tf-fan-mse-5",
         config=est_config
     )
 
@@ -236,6 +237,9 @@ def main(unused_argv):
             img = result['image'] #cv2.imread(filename)
             heatmaps = result['heatmap']
 
+            pts = get_landmarks(heatmaps[1])
+            print(pts)
+
             for i, heatmap in enumerate(heatmaps):
                 heatmap  = np.sum(heatmap, axis=2)
                 # heatmap = (heatmap / -255).astype(np.uint8)
@@ -243,11 +247,10 @@ def main(unused_argv):
                 heatmap = cv2.resize(heatmap, (256, 256))
                 cv2.imshow("%d"%i, heatmap)
 
-            pts = get_landmarks(heatmaps[1])
-            print(pts)
+
             # print(heatmap)
             for pt in pts:
-                cv2.circle(img, (int(pt[0]), int(pt[1])), 1, (0, 255, 0), -1, cv2.LINE_AA)
+                cv2.circle(img, (int(pt[1]), int(pt[0])), 2, (0, 255, 0), -1, cv2.LINE_AA)
 
                 # cv2.imshow("map%d"%i, heatmap)
 
@@ -266,11 +269,14 @@ def main(unused_argv):
 
 def get_landmarks(heatmaps):
     pts = []
-    for i,heatmap in enumerate(heatmaps):     
-        if i < 20:
-            cv2.imshow("%d"%i, heatmap)
+    heatmaps = np.moveaxis(heatmaps, -1, 0)
+    for i,heatmap in enumerate(heatmaps):   
         
         heatmap = cv2.resize(heatmap, (IMG_DIM, IMG_DIM))   
+        heatmap = (heatmap - heatmap.min())/(heatmap.max()-heatmap.min())
+        # if 28 < i < 35:
+        #     cv2.imshow("pt%d"%i, heatmap)
+        
 
         pt = np.unravel_index(heatmap.argmax(), heatmap.shape)
         pt = pt[0], pt[1]
