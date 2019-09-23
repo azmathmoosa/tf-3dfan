@@ -7,23 +7,9 @@ import json
 import imgaug as ia
 from imgaug import augmenters as iaa
 
+from config import *
 
-IMG_DIM = 256
-HM_DIM = 64
-HG_STACK = 1
 
-TRAIN_PATHS = [
-    "/home/az/Documents/LS3D-W/300VW-3D/Trainset/**/",
-    "/home/az/Documents/LS3D-W/AFLW2000-3D-Reannotated",
-    "./home/az/Documents/LS3D-W/Menpo-3D",
-]
-EVAL_PATHS = [
-    "/home/az/Documents/LS3D-W/300VW-3D/CatA/**/",
-    # "/home/az/Documents/LS3D-W/300VW-3D/CatB/**/",
-    # "/home/az/Documents/LS3D-W/300VW-3D/CatC/**/",
-    "/home/az/Documents/LS3D-W/300W-Testset-3D",
-
-]
 
 sometimes = lambda aug: iaa.Sometimes(0.5, aug)
 seq = iaa.Sequential([    
@@ -39,8 +25,8 @@ seq = iaa.Sequential([
             cval=(0, 255), # if mode is constant, use a cval between 0 and 255
             mode='constant' # use any of scikit-image's warping modes (see 2nd image from the top for examples)
         )),
-    sometimes(iaa.CoarseDropout((0.0, 0.15), size_percent=0.02)),
-    sometimes(iaa.AddToHueAndSaturation((-20, 20), per_channel=True))
+    # sometimes(iaa.CoarseDropout((0.0, 0.15), size_percent=0.02)),
+    # sometimes(iaa.AddToHueAndSaturation((-20, 20), per_channel=True))
 ])
 
 
@@ -108,7 +94,7 @@ def process_face(image_path, label_path, augment=True):
 
     face = face[:,:,::-1]
     
-    gtmap = generate_gtmap(parts_xy, sigma=1., outres=HM_DIM)
+    gtmap = generate_gtmap(parts_xy, sigma=2., outres=HM_DIM)
 
     if augment:
         seq_det = seq.to_deterministic() # call this for each batch again, NOT only once at the start
@@ -160,15 +146,18 @@ def draw_labelmap(img, pt, sigma, type='Gaussian'):
         return img
 
     # Generate gaussian
+    peak_value = 6.
     size = 6 * sigma + 1
     x = np.arange(0, size, 1, float)
     y = x[:, np.newaxis]
     x0 = y0 = size // 2
     # The gaussian is not normalized, we want the center value to equal 1
     if type == 'Gaussian':
-        g = np.exp(- ((x - x0) ** 2 + (y - y0) ** 2) / (2 * sigma ** 2))
+        g = np.exp(- ((x - x0) ** 2 + (y - y0) ** 2) / (2 * sigma ** 2)) 
     elif type == 'Cauchy':
         g = sigma / (((x - x0) ** 2 + (y - y0) ** 2 + sigma ** 2) ** 1.5)
+
+    g = g*peak_value
 
     # Usable gaussian range
     g_x = max(0, -ul[0]), min(br[0], img.shape[1]) - ul[0]
@@ -197,5 +186,5 @@ if __name__ == "__main__":
     for x,y,path in generator('train', augment=False):
         cv2.imshow("face", x[:,:,::-1])
         for i,h in enumerate(y):
-            cv2.imshow("heatmap_%d"%i, np.sum(y[0], axis=2))
+            cv2.imshow("heatmap_%d"%i, np.sum(h, axis=2))
         cv2.waitKey(100)
